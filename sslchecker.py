@@ -5,6 +5,7 @@ from datetime import datetime
 import json
 import os
 import re
+import pandas as pd
 
 def is_valid_domain(domain):
     pattern = r'^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z]{2,})+$'
@@ -98,12 +99,35 @@ class SSLChecker:
             print("\033[93m[WARNING] Нет загруженных доменов.\033[0m")
             return
             
+        results = []
         for domain in self.domains_list:
             info = get_ssl_info(domain)
+            results.append(info)
             print(f"\033[92mДомен:\033[0m {info['domain']}")
             print(f"\033[92mТип сертификата:\033[0m {info['type']}")
             print(f"\033[92mСрок окончания:\033[0m {info['expiry_date']}")
             print("\033[90m" + "-" * 60 + "\033[0m")
+
+        self.save_results(results)
+
+    def save_results(self, results):
+        format_choice = input("\033[93mВыберите формат для сохранения результатов (1 - текстовый файл, 2 - Excel): \033[0m").strip()
+
+        if format_choice == '1':
+            file_path = os.path.join(os.path.dirname(__file__), 'ssl_results.txt')
+            with open(file_path, 'w', encoding='utf-8') as f:
+                for result in results:
+                    f.write(f"Домен: {result['domain']}, Тип: {result['type']}, Срок окончания: {result['expiry_date']}\n")
+            print(f"\033[92m[INFO] Результаты сохранены в '{file_path}'.\033[0m")
+
+        elif format_choice == '2':
+            df = pd.DataFrame(results)
+            file_path = os.path.join(os.path.dirname(__file__), 'ssl_results.xlsx')
+            df.to_excel(file_path, index=False)
+            print(f"\033[92m[INFO] Результаты сохранены в '{file_path}'.\033[0m")
+
+        else:
+            print("\033[91m[ERROR] Неверный выбор формата.\033[0m")
 
     def add_domain(self, domain):
         if not is_valid_domain(domain):
