@@ -196,10 +196,10 @@ async def main():
         elif command in ["list", "ls", "ll"]:
             await checker.show_domains()
         elif command.startswith("add "):
-            domains = command.split(" ", 1)[1].split(",")  # Разделяем домены по запятой
-            domains = [domain.strip() for domain in domains]  # Убираем пробелы
+            domains = command.split(" ", 1)[1].split(",")
+            domains = [domain.strip() for domain in domains]
             await checker.add_domains(domains)
-        elif command.startswith("remove ") or command.startswith("rm "):  # Добавлен синоним rm
+        elif command.startswith("remove ") or command.startswith("rm "):
             domain = command.split(" ", 1)[1]
             await checker.remove_domain(domain)
         elif command in ["check ssl", "ssl check"]:
