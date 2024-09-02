@@ -1,17 +1,19 @@
 import ssl
 import socket
+import asyncio
 from urllib.parse import urlparse
 from datetime import datetime
 import json
 import os
 import re
 import pandas as pd
+import aiofiles
 
 def is_valid_domain(domain):
     pattern = r'^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z]{2,})+$'
     return re.match(pattern, domain) is not None
 
-def get_ssl_info(domain_or_ip):
+async def get_ssl_info(domain_or_ip):
     try:
         parsed_url = urlparse(domain_or_ip)
         domain = parsed_url.hostname or domain_or_ip
@@ -19,28 +21,30 @@ def get_ssl_info(domain_or_ip):
 
         context = ssl.create_default_context()
 
-        with socket.create_connection((domain, port)) as sock:
-            with context.wrap_socket(sock, server_hostname=domain) as ssock:
-                cert = ssock.getpeercert()
+        loop = asyncio.get_event_loop()
+        sock = await loop.run_in_executor(None, socket.create_connection, (domain, port))
+        ssock = context.wrap_socket(sock, server_hostname=domain)
 
-                if cert is None:
-                    return {
-                        'domain': domain_or_ip,
-                        'type': 'Ошибка',
-                        'expiry_date': 'Сертификат не найден'
-                    }
+        cert = ssock.getpeercert()
 
-                expiry_date = cert['notAfter']
-                expiry_date = datetime.strptime(expiry_date, '%b %d %H:%M:%S %Y GMT').strftime('%d.%m.%Y')
+        if cert is None:
+            return {
+                'domain': domain_or_ip,
+                'type': 'Ошибка',
+                'expiry_date': 'Сертификат не найден'
+            }
 
-                issuer = dict(x[0] for x in cert['issuer'])
-                cert_name = issuer.get('commonName', 'Неизвестно')
+        expiry_date = cert['notAfter']
+        expiry_date = datetime.strptime(expiry_date, '%b %d %H:%M:%S %Y GMT').strftime('%d.%m.%Y')
 
-                return {
-                    'domain': domain_or_ip,
-                    'type': cert_name,
-                    'expiry_date': expiry_date
-                }
+        issuer = dict(x[0] for x in cert['issuer'])
+        cert_name = issuer.get('commonName', 'Неизвестно')
+
+        return {
+            'domain': domain_or_ip,
+            'type': cert_name,
+            'expiry_date': expiry_date
+        }
 
     except ssl.SSLError as ssl_error:
         return {
@@ -76,17 +80,17 @@ class SSLChecker:
         except json.JSONDecodeError:
             print("\033[91m[ERROR] Ошибка чтения JSON. Проверьте формат файла.\033[0m")
 
-    def save_domains(self):
+    async def save_domains(self):
         domain_data = {
             "domains": self.domains_list
         }
 
         json_file_path = os.path.join(os.path.dirname(__file__), 'domain_list.json')
 
-        with open(json_file_path, 'w', encoding='utf-8') as config_file:
-            json.dump(domain_data, config_file, ensure_ascii=False, indent=4)
+        async with aiofiles.open(json_file_path, 'w', encoding='utf-8') as config_file:
+            await config_file.write(json.dumps(domain_data, ensure_ascii=False, indent=4))
 
-    def show_domains(self):
+    async def show_domains(self):
         if not self.domains_list:
             print("\033[93m[WARNING] Нет добавленных доменов.\033[0m")
             return
@@ -94,30 +98,37 @@ class SSLChecker:
         for domain in self.domains_list:
             print(f" - {domain}")
 
-    def check_ssl(self):
+    async def check_ssl(self):
         if not self.domains_list:
             print("\033[93m[WARNING] Нет загруженных доменов.\033[0m")
             return
             
-        results = []
-        for domain in self.domains_list:
-            info = get_ssl_info(domain)
-            results.append(info)
+        print("\033[93m[INFO] Начинается проверка SSL сертификатов. Пожалуйста, подождите...\033[0m")
+
+        results = await asyncio.gather(
+            *(get_ssl_info(domain) for domain in self.domains_list)
+        )
+
+        for info in results:
             print(f"\033[92mДомен:\033[0m {info['domain']}")
             print(f"\033[92mТип сертификата:\033[0m {info['type']}")
-            print(f"\033[92mСрок окончания:\033[0m {info['expiry_date']}")
+            print(f"\033[92mСрок окончания:\033[0m {info['expiry_date']}\n")
             print("\033[90m" + "-" * 60 + "\033[0m")
 
-        self.save_results(results)
+        save_choice = input("\033[93mХотите сохранить результаты? (y/n): \033[0m").strip().lower()
+        if save_choice == 'y':
+            await self.save_results(results)
+        else:
+            print("\033[92m[INFO] Результаты не сохранены.\033[0m")
 
-    def save_results(self, results):
+    async def save_results(self, results):
         format_choice = input("\033[93mВыберите формат для сохранения результатов (1 - текстовый файл, 2 - Excel): \033[0m").strip()
 
         if format_choice == '1':
             file_path = os.path.join(os.path.dirname(__file__), 'ssl_results.txt')
-            with open(file_path, 'w', encoding='utf-8') as f:
+            async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
                 for result in results:
-                    f.write(f"Домен: {result['domain']}, Тип: {result['type']}, Срок окончания: {result['expiry_date']}\n")
+                    await f.write(f"Домен: {result['domain']}, Тип: {result['type']}, Срок окончания: {result['expiry_date']}\n")
             print(f"\033[92m[INFO] Результаты сохранены в '{file_path}'.\033[0m")
 
         elif format_choice == '2':
@@ -125,32 +136,37 @@ class SSLChecker:
             file_path = os.path.join(os.path.dirname(__file__), 'ssl_results.xlsx')
             df.to_excel(file_path, index=False)
             print(f"\033[92m[INFO] Результаты сохранены в '{file_path}'.\033[0m")
-
         else:
             print("\033[91m[ERROR] Неверный выбор формата.\033[0m")
 
-    def add_domain(self, domain):
-        if not is_valid_domain(domain):
-            print(f"\033[91m[ERROR] Домен '{domain}' не является допустимым.\033[0m")
-            return
+    async def add_domains(self, domains):
+        added_domains = []
+        for domain in domains:
+            if not is_valid_domain(domain):
+                print(f"\033[91m[ERROR] Домен '{domain}' не является допустимым.\033[0m")
+                continue
 
-        if domain in self.domains_list:
-            print(f"\033[93m[WARNING] Домен '{domain}' уже существует в списке.\033[0m")
-            return
+            if domain in self.domains_list:
+                print(f"\033[93m[WARNING] Домен '{domain}' уже существует в списке.\033[0m")
+                continue
 
-        self.domains_list.append(domain)
-        self.save_domains()
-        print(f"\033[92m[INFO] Домен '{domain}' добавлен.\033[0m")
+            self.domains_list.append(domain)
+            added_domains.append(domain)
+        
+        await self.save_domains()
+        
+        if added_domains:
+            print(f"\033[92m[INFO] Добавлены домены: {', '.join(added_domains)}.\033[0m")
 
-    def remove_domain(self, domain):
+    async def remove_domain(self, domain):
         if domain in self.domains_list:
             self.domains_list.remove(domain)
-            self.save_domains()
+            await self.save_domains()
             print(f"\033[92m[INFO] Домен '{domain}' удален.\033[0m")
         else:
             print(f"\033[93m[WARNING] Этот домен '{domain}' не найден в списке.\033[0m")
 
-def main():
+async def main():
     checker = SSLChecker()
     
     ssl_icon = """
@@ -164,7 +180,7 @@ def main():
                                                                                   
 Доступные команды:
 \033[93m1. list \033[0m - показать список добавленных доменов.
-\033[93m2. add <домен> \033[0m - добавить домен в список.
+\033[93m2. add <домен1, домен2, ...> \033[0m - добавить домены в список (через запятую).
 \033[93m3. remove <домен> \033[0m - удалить домен из списка.
 \033[93m4. check ssl \033[0m - проверить SSL сертификаты добавленных доменов.
 \033[93m5. exit \033[0m - выход из программы.
@@ -178,17 +194,18 @@ def main():
         if command == "exit":
             break
         elif command in ["list", "ls", "ll"]:
-            checker.show_domains()
+            await checker.show_domains()
         elif command.startswith("add "):
+            domains = command.split(" ", 1)[1].split(",")  # Разделяем домены по запятой
+            domains = [domain.strip() for domain in domains]  # Убираем пробелы
+            await checker.add_domains(domains)
+        elif command.startswith("remove ") or command.startswith("rm "):  # Добавлен синоним rm
             domain = command.split(" ", 1)[1]
-            checker.add_domain(domain)
-        elif command.startswith("remove "):
-            domain = command.split(" ", 1)[1]
-            checker.remove_domain(domain)
+            await checker.remove_domain(domain)
         elif command in ["check ssl", "ssl check"]:
-            checker.check_ssl()
+            await checker.check_ssl()
         else:
-            print("\033[93m[WARNING] Неизвестная команда. Попробуйте 'list', 'add <домен>', 'remove <домен>' или 'check ssl'.\033[0m")
+            print("\033[93m[WARNING] Неизвестная команда. Попробуйте 'list', 'add <домен...>', 'remove <домен>' или 'check ssl'.\033[0m")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
