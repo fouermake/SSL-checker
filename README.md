@@ -1,2 +1,2 @@
 # ssl-checker
-The program is designed to check installed SSL certificates on domains.
+Программа предназначена для проверки установленных SSL-сертификатов на доменах, а также даты их окончания.
