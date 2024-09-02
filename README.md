@@ -8,6 +8,4 @@
 
 Для работы скрипта вам понадобятся:
 - Python версии 3.6 или выше
-- pip install requests cryptography pandas openpyxl
-
-
+- pip install pandas aiofiles
