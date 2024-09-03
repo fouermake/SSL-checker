@@ -22,7 +22,7 @@ async def get_ssl_info(domain_or_ip):
         context = ssl.create_default_context()
         loop = asyncio.get_event_loop()
 
-        expiry_date_str = 'Неизвестно'  # Инициализация переменной для даты истечения
+        expiry_date_str = 'Неизвестно'
 
         try:
             sock = await loop.run_in_executor(None, socket.create_connection, (domain, port))
@@ -46,7 +46,7 @@ async def get_ssl_info(domain_or_ip):
 
             expiry_date = cert['notAfter']
             expiry_date_dt = datetime.strptime(expiry_date, '%b %d %H:%M:%S %Y GMT')
-            expiry_date_str = expiry_date_dt.strftime('%d.%m.%Y')  # Сохранение формата даты
+            expiry_date_str = expiry_date_dt.strftime('%d.%m.%Y')
 
             issuer = dict(x[0] for x in cert['issuer'])
             cert_name = issuer.get('commonName', 'Сертификат истёк')
@@ -70,7 +70,7 @@ async def get_ssl_info(domain_or_ip):
                 return {
                     'domain': domain_or_ip,
                     'type': 'Сертификат истёк',
-                    'expiry_date': expiry_date_str  # Используем сохранённую дату истечения
+                    'expiry_date': expiry_date_str
                 }
             elif "self-signed certificate" in error_message:
                 return {
@@ -91,7 +91,6 @@ async def get_ssl_info(domain_or_ip):
             'type': 'Ошибка',
             'expiry_date': str(e)
         }
-
 
 class SSLChecker:
     def __init__(self):
@@ -213,6 +212,17 @@ class SSLChecker:
         if removed_domains:
             print(f"\033[92m[INFO] Удалены домены: {', '.join(removed_domains)}.\033[0m")
 
+    async def show_github_info(self):
+        github_info = {
+            "domain": "https://github.com/fouermake",
+            "author": "fouermake",
+            "creation_date": "09.03.2024"
+        }
+        
+        print("\n\033[92m{: <50} {: <20} {: <25}\033[0m".format("Домен", "Автор", "Дата создания программы"))
+        print("-" * 100)
+        print("{: <50} {: <20} {: <25}".format(github_info['domain'], github_info['author'], github_info['creation_date']))
+
 async def main():
     checker = SSLChecker()
 
@@ -230,7 +240,7 @@ async def main():
 \033[93m2. add <домен1, домен2, ...> \033[0m - добавить домены в список (через запятую).
 \033[93m3. remove (rm) <домен1, домен2, ...> \033[0m - удалить домены из списка (через запятую).
 \033[93m4. check ssl \033[0m - проверить SSL сертификаты добавленных доменов.
-\033[93m5. exit \033[0m - выход из программы.
+\033[93m6. exit \033[0m - выход из программы.
 """
 
     print(ssl_icon)
@@ -252,6 +262,8 @@ async def main():
             await checker.remove_domains(domains)
         elif command in ["check ssl", "ssl check"]:
             await checker.check_ssl()
+        elif command == "git":
+            await checker.show_github_info()
         else:
             print("\033[93m[WARNING] Неизвестная команда. Попробуйте 'list', 'add <домен...>', 'remove <домен>' или 'check ssl'.\033[0m")
 
