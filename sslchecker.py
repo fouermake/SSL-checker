@@ -9,9 +9,11 @@ import re
 import pandas as pd
 import aiofiles
 
+
 def is_valid_domain(domain):
     pattern = r'^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z]{2,})+$'
     return re.match(pattern, domain) is not None
+
 
 async def get_ssl_info(domain_or_ip):
     try:
@@ -58,6 +60,7 @@ async def get_ssl_info(domain_or_ip):
             'type': 'Ошибка',
             'expiry_date': str(e)
         }
+
 
 class SSLChecker:
     def __init__(self):
@@ -109,11 +112,10 @@ class SSLChecker:
             *(get_ssl_info(domain) for domain in self.domains_list)
         )
 
+        print("\n\033[92m{: <30} {: <50} {: <10}\033[0m".format("Домен", "Тип сертификата", "Дата окончания"))
+        print("-" * 100)
         for info in results:
-            print(f"\033[92mДомен:\033[0m {info['domain']}")
-            print(f"\033[92mТип сертификата:\033[0m {info['type']}")
-            print(f"\033[92mСрок окончания:\033[0m {info['expiry_date']}\n")
-            print("\033[90m" + "-" * 60 + "\033[0m")
+            print("{: <30} {: <50} {: <10}".format(info['domain'], info['type'], info['expiry_date']))
 
         save_choice = input("\033[93mХотите сохранить результаты? (y/n): \033[0m").strip().lower()
         if save_choice == 'y':
@@ -164,7 +166,21 @@ class SSLChecker:
             await self.save_domains()
             print(f"\033[92m[INFO] Домен '{domain}' удален.\033[0m")
         else:
-            print(f"\033[93m[WARNING] Этот домен '{domain}' не найден в списке.\033[0m")
+            print(f"\033[93m[WARNING] Домен '{domain}' не найден в списке.\033[0m")
+
+    async def remove_domains(self, domains):
+        removed_domains = []
+        for domain in domains:
+            if domain in self.domains_list:
+                self.domains_list.remove(domain)
+                removed_domains.append(domain)
+            else:
+                print(f"\033[93m[WARNING] Домен '{domain}' не найден в списке.\033[0m")
+
+        await self.save_domains()
+
+        if removed_domains:
+            print(f"\033[92m[INFO] Удалены домены: {', '.join(removed_domains)}.\033[0m")
 
 async def main():
     checker = SSLChecker()
@@ -179,13 +195,13 @@ async def main():
 \033[92m #####   #####  #######     #####  #     # #######  #####  #    # ####### #     # \033[0m
                                                                                   
 Доступные команды:
-\033[93m1. list \033[0m - показать список добавленных доменов.
+\033[93m1. list (ll, ls)\033[0m - показать список добавленных доменов.
 \033[93m2. add <домен1, домен2, ...> \033[0m - добавить домены в список (через запятую).
-\033[93m3. remove <домен> \033[0m - удалить домен из списка.
+\033[93m3. remove (rm) <домен1, домен2, ...> \033[0m - удалить домены из списка (через запятую).
 \033[93m4. check ssl \033[0m - проверить SSL сертификаты добавленных доменов.
 \033[93m5. exit \033[0m - выход из программы.
 """
-    
+
     print(ssl_icon)
     
     while True:
@@ -196,12 +212,13 @@ async def main():
         elif command in ["list", "ls", "ll"]:
             await checker.show_domains()
         elif command.startswith("add "):
-            domains = command.split(" ", 1)[1].split(",")
-            domains = [domain.strip() for domain in domains]
+            domains = command.split(" ", 1)[1].split(",") 
+            domains = [domain.strip() for domain in domains]  
             await checker.add_domains(domains)
         elif command.startswith("remove ") or command.startswith("rm "):
-            domain = command.split(" ", 1)[1]
-            await checker.remove_domain(domain)
+            domains = command.split(" ", 1)[1].split(",") 
+            domains = [domain.strip() for domain in domains]  
+            await checker.remove_domains(domains)
         elif command in ["check ssl", "ssl check"]:
             await checker.check_ssl()
         else:
