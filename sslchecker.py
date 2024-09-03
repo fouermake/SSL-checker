@@ -9,11 +9,9 @@ import re
 import pandas as pd
 import aiofiles
 
-
 def is_valid_domain(domain):
     pattern = r'^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z]{2,})+$'
     return re.match(pattern, domain) is not None
-
 
 async def get_ssl_info(domain_or_ip):
     try:
@@ -22,38 +20,71 @@ async def get_ssl_info(domain_or_ip):
         port = parsed_url.port or 443
 
         context = ssl.create_default_context()
-
         loop = asyncio.get_event_loop()
-        sock = await loop.run_in_executor(None, socket.create_connection, (domain, port))
-        ssock = context.wrap_socket(sock, server_hostname=domain)
 
-        cert = ssock.getpeercert()
+        expiry_date_str = 'Неизвестно'  # Инициализация переменной для даты истечения
 
-        if cert is None:
+        try:
+            sock = await loop.run_in_executor(None, socket.create_connection, (domain, port))
+        except (socket.gaierror, socket.error):
             return {
                 'domain': domain_or_ip,
-                'type': 'Ошибка',
-                'expiry_date': 'Сертификат не найден'
+                'type': 'Ошибка соединения',
+                'expiry_date': 'Не удалось установить подключение'
             }
 
-        expiry_date = cert['notAfter']
-        expiry_date = datetime.strptime(expiry_date, '%b %d %H:%M:%S %Y GMT').strftime('%d.%m.%Y')
+        try:
+            ssock = context.wrap_socket(sock, server_hostname=domain)
+            cert = ssock.getpeercert()
+            
+            if cert is None:
+                return {
+                    'domain': domain_or_ip,
+                    'type': 'Ошибка',
+                    'expiry_date': 'Сертификат не найден'
+                }
 
-        issuer = dict(x[0] for x in cert['issuer'])
-        cert_name = issuer.get('commonName', 'Неизвестно')
+            expiry_date = cert['notAfter']
+            expiry_date_dt = datetime.strptime(expiry_date, '%b %d %H:%M:%S %Y GMT')
+            expiry_date_str = expiry_date_dt.strftime('%d.%m.%Y')  # Сохранение формата даты
 
-        return {
-            'domain': domain_or_ip,
-            'type': cert_name,
-            'expiry_date': expiry_date
-        }
+            issuer = dict(x[0] for x in cert['issuer'])
+            cert_name = issuer.get('commonName', 'Сертификат истёк')
 
-    except ssl.SSLError as ssl_error:
-        return {
-            'domain': domain_or_ip,
-            'type': 'Ошибка SSL',
-            'expiry_date': str(ssl_error)
-        }
+            if expiry_date_dt < datetime.now():
+                return {
+                    'domain': domain_or_ip,
+                    'type': 'Ошибка SSL',
+                    'expiry_date': expiry_date_str
+                }
+
+            return {
+                'domain': domain_or_ip,
+                'type': cert_name,
+                'expiry_date': expiry_date_str
+            }
+
+        except ssl.SSLError as ssl_error:
+            error_message = str(ssl_error)
+            if "certificate has expired" in error_message:
+                return {
+                    'domain': domain_or_ip,
+                    'type': 'Сертификат истёк',
+                    'expiry_date': expiry_date_str  # Используем сохранённую дату истечения
+                }
+            elif "self-signed certificate" in error_message:
+                return {
+                    'domain': domain_or_ip,
+                    'type': 'Cамоподписанный сертификат',
+                    'expiry_date': 'Неизвестно'
+                }
+            else:
+                return {
+                    'domain': domain_or_ip,
+                    'type': 'Ошибка SSL',
+                    'expiry_date': str(ssl_error)
+                }
+
     except Exception as e:
         return {
             'domain': domain_or_ip,
@@ -107,7 +138,7 @@ class SSLChecker:
             return
             
         print("\033[93m[INFO] Начинается проверка SSL сертификатов. Пожалуйста, подождите...\033[0m")
-
+        
         results = await asyncio.gather(
             *(get_ssl_info(domain) for domain in self.domains_list)
         )
@@ -184,7 +215,7 @@ class SSLChecker:
 
 async def main():
     checker = SSLChecker()
-    
+
     ssl_icon = """
 \033[92m #####   #####  #           #####  #     # #######  #####  #    # ####### ######  \033[0m
 \033[92m#     # #     # #          #     # #     # #       #     # #   #  #       #     # \033[0m
