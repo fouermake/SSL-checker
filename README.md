@@ -15,7 +15,7 @@
 
 1. Склонируйте репозиторий:
    ```bash
-   git clone [https://github.com/yourusername/ssl-checker.git](https://github.com/fouermake/ssl-checker.git)
+   git clone https://github.com/fouermake/ssl-checker.git
    ```
 2. Перейдите в директорию проекта:
    ```bash
