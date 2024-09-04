@@ -32,7 +32,7 @@ async def get_ssl_info(domain_or_ip):
         try:
             ssock = context.wrap_socket(sock, server_hostname=domain)
             cert = ssock.getpeercert()
-            
+
             if cert is None:
                 return {'domain': domain_or_ip, 'type': 'Ошибка', 'expiry_date': 'Сертификат не найден'}
 
@@ -93,7 +93,7 @@ class SSLChecker:
             return
         print("\033[92mСписок добавленных доменов:\033[0m")
         for domain in self.domains_list:
-            print(f" - {domain}")
+            print(f" - {domain.replace('http://', '').replace('https://', '')}")
 
     async def check_ssl(self):
         if not self.domains_list:
@@ -136,14 +136,13 @@ class SSLChecker:
     async def add_domains(self, domains):
         added_domains = []
         for domain in domains:
+            domain = domain.replace('http://', '').replace('https://', '').strip()
             if not is_valid_domain(domain):
                 print(f"\033[91m[ERROR] Домен '{domain}' не является допустимым.\033[0m")
                 continue
-
             if domain in self.domains_list:
                 print(f"\033[93m[WARNING] Домен '{domain}' уже существует в списке.\033[0m")
                 continue
-
             self.domains_list.append(domain)
             added_domains.append(domain)
 
@@ -153,21 +152,23 @@ class SSLChecker:
             print(f"\033[92m[INFO] Добавлены домены: {', '.join(added_domains)}.\033[0m")
 
     async def remove_domain(self, domain):
-        if domain in self.domains_list:
-            self.domains_list.remove(domain)
+        stripped_domain = domain.replace('http://', '').replace('https://', '').strip()
+        if stripped_domain in self.domains_list:
+            self.domains_list.remove(stripped_domain)
             await self.save_domains()
-            print(f"\033[92m[INFO] Домен '{domain}' удален.\033[0m")
+            print(f"\033[92m[INFO] Домен '{stripped_domain}' удален.\033[0m")
         else:
-            print(f"\033[93m[WARNING] Домен '{domain}' не найден в списке.\033[0m")
+            print(f"\033[93m[WARNING] Домен '{stripped_domain}' не найден в списке.\033[0m")
 
     async def remove_domains(self, domains):
         removed_domains = []
         for domain in domains:
-            if domain in self.domains_list:
-                self.domains_list.remove(domain)
-                removed_domains.append(domain)
+            stripped_domain = domain.replace('http://', '').replace('https://', '').strip()
+            if stripped_domain in self.domains_list:
+                self.domains_list.remove(stripped_domain)
+                removed_domains.append(stripped_domain)
             else:
-                print(f"\033[93m[WARNING] Домен '{domain}' не найден в списке.\033[0m")
+                print(f"\033[93m[WARNING] Домен '{stripped_domain}' не найден в списке.\033[0m")
 
         await self.save_domains()
 
